@@ -49,10 +49,6 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: navigatorKey,
-      routes: {
-        '/': (context) => BluetoothScanPage(),
-        '/device-list': (context) => const BluetoothDeviceList(),
-      },
       home: BluetoothScanPage(),
       debugShowCheckedModeBanner: false,
     );
@@ -78,6 +74,7 @@ class BluetoothDeviceList extends StatefulWidget {
 
 class _BluetoothDeviceListState extends State<BluetoothDeviceList> {
   List<BluetoothDevice> devices = [];
+
   bool isLoading = true;
   bool scanning = false;
 
@@ -124,70 +121,11 @@ class _BluetoothDeviceListState extends State<BluetoothDeviceList> {
     );
   }
 
-  void _connectToDevice(
-      BluetoothConnection? connection, BluetoothDevice device) async {
-    try {
-      connection = await BluetoothConnection.toAddress(device.address);
-      if (connection.isConnected) {
-        await _setupBaudRate(connection);
-        _sendControlCommand(connection, 'START_SIGNAL');
-        print('Connected to ${device.name}');
-      } else {
-        print('Error: Connection is null or not connected.');
-      }
-    } catch (e) {
-      print('Error connecting to ${device.name}: $e');
-    }
-  }
-
-  void _sendControlCommand(BluetoothConnection? connection, String command) {
-    print('Sent: $command');
-    if (connection != null && connection.isConnected) {
-      try {
-        connection.output.add(utf8.encode(command));
-        connection.output.allSent.then((_) {
-          print('Sent: $command');
-        });
-      } catch (e) {
-        print('Error sending command: $e');
-      }
-    } else {
-      print('Không kết nối đến thiết bị Bluetooth.');
-    }
-  }
-
-  Future<void> _setupBaudRate(BluetoothConnection? connection) async {
-    try {
-      if (connection != null && connection.isConnected) {
-        const int baudRate = 9600;
-        final Uint8List data =
-            Uint8List.fromList([0x02, 0x31, 0x30, 0x30, 0x30, 0x03, 9600]);
-        connection.output.add(Uint8List.fromList(data));
-        await connection.output.allSent;
-        print('Baud rate set to $baudRate');
-      } else {
-        print('Error: Connection is null or not connected.');
-      }
-    } catch (e) {
-      print('Error setting up baud rate: $e');
-    }
-  }
-
-  void _disconnectFromDevice(
-      BluetoothConnection? connection, BluetoothDevice device) async {
-    try {
-      await connection?.finish();
-      print('Disconnected from ${device.name}');
-    } catch (e) {
-      print('Error disconnecting from ${device.name}: $e');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        Navigator.pop(context);
+        Navigator.pop(context, widget.connection);
         return true;
       },
       child: Scaffold(
@@ -285,22 +223,6 @@ class _BluetoothScanPageState extends State<BluetoothScanPage> {
     );
   }
 
-  void _sendControlCommand(BluetoothConnection? connection, String command) {
-    print('Sent: $command');
-    if (connection != null && connection.isConnected) {
-      try {
-        connection.output.add(utf8.encode(command));
-        connection.output.allSent.then((_) {
-          print('Sent: $command');
-        });
-      } catch (e) {
-        print('Error sending command: $e');
-      }
-    } else {
-      print('Không kết nối đến thiết bị Bluetooth.');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -313,13 +235,16 @@ class _BluetoothScanPageState extends State<BluetoothScanPage> {
             onPressed: () async {
               final router = Navigator.of(context);
               await _requestBluetoothPermission();
-              router.push(
+              final newConnection = await router.push<BluetoothConnection>(
                 MaterialPageRoute(
                   builder: (context) => BluetoothDeviceList(
                     connection: connection,
                   ),
                 ),
               );
+              setState(() {
+                connection = newConnection;
+              });
             },
           ),
         ],
@@ -420,5 +345,64 @@ class _BluetoothScanPageState extends State<BluetoothScanPage> {
         ],
       ),
     );
+  }
+}
+
+void _connectToDevice(
+    BluetoothConnection? connection, BluetoothDevice device) async {
+  try {
+    connection = await BluetoothConnection.toAddress(device.address);
+    if (connection.isConnected) {
+      await _setupBaudRate(connection);
+      _sendControlCommand(connection, 'START_SIGNAL');
+      print('Connected to ${device.name}');
+    } else {
+      print('Error: Connection is null or not connected.');
+    }
+  } catch (e) {
+    print('Error connecting to ${device.name}: $e');
+  }
+}
+
+void _sendControlCommand(BluetoothConnection? connection, String command) {
+  print('Sent: $command');
+  if (connection != null && connection.isConnected) {
+    try {
+      connection.output.add(Uint8List.fromList(utf8.encode(command)));
+      connection.output.allSent.then((_) {
+        print('Sent: $command');
+      });
+    } catch (e) {
+      print('Error sending command: $e');
+    }
+  } else {
+    print('Không kết nối đến thiết bị Bluetooth.');
+  }
+}
+
+Future<void> _setupBaudRate(BluetoothConnection? connection) async {
+  try {
+    if (connection != null && connection.isConnected) {
+      const int baudRate = 9600;
+      final Uint8List data =
+          Uint8List.fromList([0x02, 0x31, 0x30, 0x30, 0x30, 0x03, 9600]);
+      connection.output.add(Uint8List.fromList(data));
+      await connection.output.allSent;
+      print('Baud rate set to $baudRate');
+    } else {
+      print('Error: Connection is null or not connected.');
+    }
+  } catch (e) {
+    print('Error setting up baud rate: $e');
+  }
+}
+
+void _disconnectFromDevice(
+    BluetoothConnection? connection, BluetoothDevice device) async {
+  try {
+    await connection?.finish();
+    print('Disconnected from ${device.name}');
+  } catch (e) {
+    print('Error disconnecting from ${device.name}: $e');
   }
 }
