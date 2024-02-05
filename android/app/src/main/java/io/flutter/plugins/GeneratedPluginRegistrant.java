@@ -17,22 +17,22 @@ public final class GeneratedPluginRegistrant {
   public static void registerWith(@NonNull FlutterEngine flutterEngine) {
     try {
       flutterEngine.getPlugins().add(new com.pauldemarco.flutter_blue.FlutterBluePlugin());
-    } catch (Exception e) {
+    } catch(Exception e) {
       Log.e(TAG, "Error registering plugin flutter_blue, com.pauldemarco.flutter_blue.FlutterBluePlugin", e);
     }
     try {
       flutterEngine.getPlugins().add(new io.github.edufolly.flutterbluetoothserial.FlutterBluetoothSerialPlugin());
-    } catch (Exception e) {
+    } catch(Exception e) {
       Log.e(TAG, "Error registering plugin flutter_bluetooth_serial, io.github.edufolly.flutterbluetoothserial.FlutterBluetoothSerialPlugin", e);
     }
     try {
       flutterEngine.getPlugins().add(new com.baseflow.permissionhandler.PermissionHandlerPlugin());
-    } catch (Exception e) {
+    } catch(Exception e) {
       Log.e(TAG, "Error registering plugin permission_handler_android, com.baseflow.permissionhandler.PermissionHandlerPlugin", e);
     }
     try {
       flutterEngine.getPlugins().add(new io.realm.RealmPlugin());
-    } catch (Exception e) {
+    } catch(Exception e) {
       Log.e(TAG, "Error registering plugin realm, io.realm.RealmPlugin", e);
     }
   }

@@ -43,34 +43,17 @@ class ArduinoController {
 }
 
 class MyApp extends StatelessWidget {
-  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: navigatorKey,
-      home: SafeArea(
-        child: Scaffold(
-          appBar: AppBar(
-            backgroundColor: Colors.blueAccent,
-            title: const Text('Điều Khiển Từ Xa'),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.bluetooth),
-                onPressed: () async {
-                  await _requestBluetoothPermission();
-                  navigatorKey.currentState!.push(
-                    MaterialPageRoute(
-                      builder: (context) => const BluetoothDeviceList(),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-          body: const BluetoothScanPage(),
-        ),
-      ),
+      routes: {
+        '/': (context) => BluetoothScanPage(),
+        '/device-list': (context) => const BluetoothDeviceList(),
+      },
+      home: BluetoothScanPage(),
       debugShowCheckedModeBanner: false,
     );
   }
@@ -87,8 +70,8 @@ Future<void> _requestBluetoothPermission() async {
 }
 
 class BluetoothDeviceList extends StatefulWidget {
-  const BluetoothDeviceList({Key? key}) : super(key: key);
-
+  const BluetoothDeviceList({Key? key, this.connection}) : super(key: key);
+  final BluetoothConnection? connection;
   @override
   _BluetoothDeviceListState createState() => _BluetoothDeviceListState();
 }
@@ -97,7 +80,6 @@ class _BluetoothDeviceListState extends State<BluetoothDeviceList> {
   List<BluetoothDevice> devices = [];
   bool isLoading = true;
   bool scanning = false;
-  BluetoothConnection? connection;
 
   @override
   void initState() {
@@ -115,7 +97,7 @@ class _BluetoothDeviceListState extends State<BluetoothDeviceList> {
     });
 
     FlutterBluetoothSerial.instance.startDiscovery().listen(
-          (BluetoothDiscoveryResult result) {
+      (BluetoothDiscoveryResult result) {
         if (!mounted) return;
 
         setState(() {
@@ -142,12 +124,13 @@ class _BluetoothDeviceListState extends State<BluetoothDeviceList> {
     );
   }
 
-  void _connectToDevice(BluetoothDevice device) async {
+  void _connectToDevice(
+      BluetoothConnection? connection, BluetoothDevice device) async {
     try {
       connection = await BluetoothConnection.toAddress(device.address);
-      if (connection != null && connection!.isConnected) {
-        await _setupBaudRate();
-        _sendControlCommand('START_SIGNAL');
+      if (connection.isConnected) {
+        await _setupBaudRate(connection);
+        _sendControlCommand(connection, 'START_SIGNAL');
         print('Connected to ${device.name}');
       } else {
         print('Error: Connection is null or not connected.');
@@ -157,12 +140,12 @@ class _BluetoothDeviceListState extends State<BluetoothDeviceList> {
     }
   }
 
-  void _sendControlCommand(String command) {
+  void _sendControlCommand(BluetoothConnection? connection, String command) {
     print('Sent: $command');
-    if (connection != null && connection!.isConnected) {
+    if (connection != null && connection.isConnected) {
       try {
-        connection!.output.add(utf8.encode(command));
-        connection!.output.allSent.then((_) {
+        connection.output.add(utf8.encode(command));
+        connection.output.allSent.then((_) {
           print('Sent: $command');
         });
       } catch (e) {
@@ -173,14 +156,14 @@ class _BluetoothDeviceListState extends State<BluetoothDeviceList> {
     }
   }
 
-
-  Future<void> _setupBaudRate() async {
+  Future<void> _setupBaudRate(BluetoothConnection? connection) async {
     try {
-      if (connection != null && connection!.isConnected) {
+      if (connection != null && connection.isConnected) {
         const int baudRate = 9600;
-        final Uint8List data = Uint8List.fromList([0x02, 0x31, 0x30, 0x30, 0x30, 0x03, 9600]);
-        connection!.output.add(Uint8List.fromList(data));
-        await connection!.output.allSent;
+        final Uint8List data =
+            Uint8List.fromList([0x02, 0x31, 0x30, 0x30, 0x30, 0x03, 9600]);
+        connection.output.add(Uint8List.fromList(data));
+        await connection.output.allSent;
         print('Baud rate set to $baudRate');
       } else {
         print('Error: Connection is null or not connected.');
@@ -190,7 +173,8 @@ class _BluetoothDeviceListState extends State<BluetoothDeviceList> {
     }
   }
 
-  void _disconnectFromDevice(BluetoothDevice device) async {
+  void _disconnectFromDevice(
+      BluetoothConnection? connection, BluetoothDevice device) async {
     try {
       await connection?.finish();
       print('Disconnected from ${device.name}');
@@ -212,19 +196,20 @@ class _BluetoothDeviceListState extends State<BluetoothDeviceList> {
         ),
         body: isLoading
             ? const Center(
-          child: CircularProgressIndicator(),
-        )
+                child: CircularProgressIndicator(),
+              )
             : ListView.builder(
-          itemCount: devices.length,
-          itemBuilder: (context, index) {
-            BluetoothDevice device = devices[index];
-            return BluetoothDeviceListItem(
-              device: device,
-              onConnect: _connectToDevice,
-              onDisconnect: _disconnectFromDevice,
-            );
-          },
-        ),
+                itemCount: devices.length,
+                itemBuilder: (context, index) {
+                  BluetoothDevice device = devices[index];
+                  return BluetoothDeviceListItem(
+                    device: device,
+                    onConnect: (p0) => _connectToDevice(widget.connection, p0),
+                    onDisconnect: (p0) =>
+                        _disconnectFromDevice(widget.connection, p0),
+                  );
+                },
+              ),
       ),
     );
   }
@@ -249,13 +234,13 @@ class BluetoothDeviceListItem extends StatelessWidget {
       subtitle: Text(device.address),
       trailing: device.isConnected
           ? ElevatedButton(
-        onPressed: () => onDisconnect(device),
-        child: const Text('Ngắt Kết Nối'),
-      )
+              onPressed: () => onDisconnect.call(device),
+              child: const Text('Ngắt Kết Nối'),
+            )
           : ElevatedButton(
-        onPressed: () => onConnect(device),
-        child: const Text('Kết Nối'),
-      ),
+              onPressed: () => onConnect.call(device),
+              child: const Text('Kết Nối'),
+            ),
     );
   }
 }
@@ -300,12 +285,12 @@ class _BluetoothScanPageState extends State<BluetoothScanPage> {
     );
   }
 
-  void _sendControlCommand(String command) {
+  void _sendControlCommand(BluetoothConnection? connection, String command) {
     print('Sent: $command');
-    if (connection != null && connection!.isConnected) {
+    if (connection != null && connection.isConnected) {
       try {
-        connection!.output.add(utf8.encode(command));
-        connection!.output.allSent.then((_) {
+        connection.output.add(utf8.encode(command));
+        connection.output.allSent.then((_) {
           print('Sent: $command');
         });
       } catch (e) {
@@ -318,100 +303,122 @@ class _BluetoothScanPageState extends State<BluetoothScanPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        GestureDetector(
-          onTap: _showBottomSheet,
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  selectedOption,
-                  style: const TextStyle(fontSize: 25),
-                ),
-                const Icon(Icons.arrow_drop_down),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      print('Bật');
-                      if (selectedOption == 'Option 1') {
-                        arduinoController.openRelay1();
-                        _sendControlCommand('1');
-                      } else if (selectedOption == 'Option 2') {
-                        arduinoController.openRelay2();
-                        _sendControlCommand('2');
-                      } else if (selectedOption == 'Option 3') {
-                        arduinoController.openRelay3();
-                        _sendControlCommand('3');
-                      } else if (selectedOption == 'Option 4') {
-                        arduinoController.openRelay4();
-                        _sendControlCommand('4');
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.cyanAccent,
-                    ),
-                    child: const Padding(
-                      padding: EdgeInsets.all(30.0),
-                      child: Text('Bật', style: TextStyle(fontSize: 50)),
-                    ),
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.blueAccent,
+        title: const Text('Điều Khiển Từ Xa'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.bluetooth),
+            onPressed: () async {
+              final router = Navigator.of(context);
+              await _requestBluetoothPermission();
+              router.push(
+                MaterialPageRoute(
+                  builder: (context) => BluetoothDeviceList(
+                    connection: connection,
                   ),
                 ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      print('Tắt');
-                      if (selectedOption == 'Option 1') {
-                        arduinoController.closeRelay1();
-                        _sendControlCommand('5');
-                      } else if (selectedOption == 'Option 2') {
-                        arduinoController.closeRelay2();
-                        _sendControlCommand('6');
-                      } else if (selectedOption == 'Option 3') {
-                        arduinoController.closeRelay3();
-                        _sendControlCommand('7');
-                      } else if (selectedOption == 'Option 4') {
-                        arduinoController.closeRelay4();
-                        _sendControlCommand('8');
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.cyanAccent,
-                    ),
-                    child: const Padding(
-                      padding: EdgeInsets.all(30.0),
-                      child: Text('Tắt', style: TextStyle(fontSize: 50)),
-                    ),
+              );
+            },
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          GestureDetector(
+            onTap: _showBottomSheet,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    selectedOption,
+                    style: const TextStyle(fontSize: 25),
                   ),
-                ),
-                const SizedBox(height: 10),
-              ],
+                  const Icon(Icons.arrow_drop_down),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
+          const SizedBox(height: 16),
+          Expanded(
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        print('Bật');
+                        if (selectedOption == 'Option 1') {
+                          arduinoController.openRelay1();
+                          _sendControlCommand(connection, '1');
+                        } else if (selectedOption == 'Option 2') {
+                          arduinoController.openRelay2();
+                          _sendControlCommand(connection, '2');
+                        } else if (selectedOption == 'Option 3') {
+                          arduinoController.openRelay3();
+                          _sendControlCommand(connection, '3');
+                        } else if (selectedOption == 'Option 4') {
+                          arduinoController.openRelay4();
+                          _sendControlCommand(connection, '4');
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.cyanAccent,
+                      ),
+                      child: const Padding(
+                        padding: EdgeInsets.all(30.0),
+                        child: Text('Bật', style: TextStyle(fontSize: 50)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        print('Tắt');
+                        if (selectedOption == 'Option 1') {
+                          arduinoController.closeRelay1();
+                          _sendControlCommand(connection, '5');
+                        } else if (selectedOption == 'Option 2') {
+                          arduinoController.closeRelay2();
+                          _sendControlCommand(connection, '6');
+                        } else if (selectedOption == 'Option 3') {
+                          arduinoController.closeRelay3();
+                          _sendControlCommand(connection, '7');
+                        } else if (selectedOption == 'Option 4') {
+                          arduinoController.closeRelay4();
+                          _sendControlCommand(connection, '8');
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.cyanAccent,
+                      ),
+                      child: const Padding(
+                        padding: EdgeInsets.all(30.0),
+                        child: Text('Tắt', style: TextStyle(fontSize: 50)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
